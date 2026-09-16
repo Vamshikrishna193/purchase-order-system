@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=./values.schema.json
+
+global:
+  domain: <cluster-domain>
+  imagePullSecret:
+    name: docker-registry
+  image:
+    registry: <your-container-registry-server>
+    tag: latest
+srv:
+  bindings:
+    auth:
+      serviceInstanceName: xsuaa
+    db:
+      serviceInstanceName: hana
+    messaging:
+      serviceInstanceName: event-mesh
+  image:
+    repository: purchase-order-system-srv
+  resources:
+    limits:
+      ephemeral-storage: 1G
+      memory: 500M
+    requests:
+      ephemeral-storage: 1G
+      cpu: 500m
+      memory: 500M
+  health:
+    liveness:
+      path: /health
+    readiness:
+      path: /health
+  networkSecurity:
+    allowNamespaceInternal: true
+approuter:
+  bindings:
+    auth:
+      serviceInstanceName: xsuaa
+  image:
+    repository: purchase-order-system-approuter
+  resources:
+    limits:
+      ephemeral-storage: 1G
+      memory: 500M
+    requests:
+      ephemeral-storage: 1G
+      cpu: 500m
+      memory: 500M
+  health:
+    liveness:
+      path: /
+    readiness:
+      path: /
+  envFrom:
+    - configMapRef:
+        name: "{{ .Release.Name }}-approuter-configmap"
+xsuaa:
+  serviceOfferingName: xsuaa
+  servicePlanName: application
+  parameters:
+    tenant-mode: dedicated
+    oauth2-configuration:
+      redirect-uris:
+        - https://*.{{ tpl .Values.global.domain . }}/**
+    xsappname: purchase-order-system-{{ .Release.Namespace }}
+hana-deployer:
+  image:
+    repository: purchase-order-system-hana-deployer
+  bindings:
+    hana:
+      serviceInstanceName: hana
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 1G
+    requests:
+      cpu: 1000m
+      memory: 1G
+hana:
+  serviceOfferingName: hana
+  servicePlanName: hdi-shared
+backendDestinations:
+  srv-api:
+    service: srv
+    Authentication: OAuth2UserTokenExchange
+event-mesh:
+  serviceOfferingName: enterprise-messaging
+  servicePlanName: default

@@ -1,0 +1,40 @@
+Starting CAP Project Generator...
+Using @sap/cds-dk [9.9.1] from /extbin/globals/bun/global/install/node_modules/@sap/cds-dk
+Using @sap/generator-cap-project [2.0.6] from [/extbin/globals/bun/global/install/node_modules/@sap/generator-cap-project]
+Using root path [/home/user/projects]
+
+Creating project with approuter, enterprise-messaging, hana, helm, mta, nodejs, xsuaa
+
+Adding facet: nodejs
+Adding facet: mta
+The "cds add helm" command is deprecated and will be removed in the next major release. Please use the "cds add kyma" command instead.
+Adding facet: helm
+Adding facet: kyma
+Adding facet: xsuaa
+Adding facet: hana
+Adding facet: approuter
+Adding facet: enterprise-messaging
+
+Successfully initialized CAP project
+Continue with: code purchase-order-system 
+
+
+Installing dependencies...
+
+added 262 packages, and audited 263 packages in 4s
+
+41 packages are looking for funding
+  run `npm fund` for details
+
+1 moderate severity vulnerability
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+
+Finished installing dependencies
+
+Done setting up project purchase-order-system
+Project is ready to use
+
