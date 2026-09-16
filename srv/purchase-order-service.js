@@ -15,7 +15,6 @@ module.exports = cds.service.impl(async function () {
                 year: currentYear
             });
 
-
         // First PO of the year
         if (!counter) {
 
