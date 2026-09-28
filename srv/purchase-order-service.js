@@ -2,10 +2,68 @@ const cds = require('@sap/cds');
 
 module.exports = cds.service.impl(async function () {
 
-    const { PurchaseOrders } = this.entities;
+    const {
+        PurchaseOrders,
+        PurchaseOrderItems
+    } = this.entities;
+
     const { PONumberCounter } = cds.entities('db');
 
+
+    // =========================================================
+    // TEMPORARY MOCK PR DATA
+    // =========================================================
+
+    const mockPRs = {
+        'PR-2026-000001': {
+            status: 'Approved'
+        },
+
+        'PR-2026-000002': {
+            status: 'Submitted'
+        },
+
+        'PR-2026-000003': {
+            status: 'Rejected'
+        },
+
+        'PR-2026-000004': {
+            status: 'Cancelled'
+        }
+    };
+
+
+    // =========================================================
+    // RULE 1 + PO NUMBER GENERATION
+    // =========================================================
+
     this.before('CREATE', PurchaseOrders, async (req) => {
+
+        const prNumber = req.data.prNumber;
+
+        if (!prNumber) {
+            return req.error(
+                400,
+                'PR Number is mandatory for Purchase Order creation.'
+            );
+        }
+
+        const pr = mockPRs[prNumber];
+
+        if (!pr) {
+            return req.error(
+                400,
+                `PR ${prNumber} does not exist.`
+            );
+        }
+
+        if (pr.status !== 'Approved') {
+            return req.error(
+                400,
+                `PO cannot be created for PR ${prNumber}. PR status is ${pr.status}. Only Approved PRs are allowed.`
+            );
+        }
+
 
         const currentYear = new Date().getFullYear();
 
@@ -15,7 +73,7 @@ module.exports = cds.service.impl(async function () {
                 year: currentYear
             });
 
-        // First PO of the year
+
         if (!counter) {
 
             await INSERT.into(PONumberCounter).entries({
@@ -28,10 +86,7 @@ module.exports = cds.service.impl(async function () {
                 lastNumber: 1
             };
 
-        }
-
-        // Next PO of the year
-        else {
+        } else {
 
             counter.lastNumber++;
 
@@ -46,160 +101,170 @@ module.exports = cds.service.impl(async function () {
         }
 
 
-        // Generate PO Number
         req.data.poNumber =
             `PO-${currentYear}-${String(counter.lastNumber).padStart(6, '0')}`;
 
-
-        // Default status
         req.data.status = 'Draft';
 
-
-        // PO Date
         if (!req.data.poDate) {
-            req.data.poDate = new Date().toISOString().split('T')[0];
+            req.data.poDate =
+                new Date().toISOString().split('T')[0];
         }
 
     });
 
 
-    this.on('submit', PurchaseOrders, async (req) => {
+    // =========================================================
+    // RULE 4: DUPLICATE PR ITEM PREVENTION
+    // =========================================================
 
-        const ID = req.params[0].ID;
+    this.before(['CREATE', 'UPDATE'], PurchaseOrderItems, async (req) => {
 
-        const po = await SELECT.one
+
+    const {
+    prItemNumber,
+    parent_ID,
+    quantity
+    } = req.data;
+
+
+    // =========================================================
+     // RULE 8
+    if (
+        quantity === null ||
+        quantity === undefined ||
+        quantity <= 0
+    ) {
+        return req.error(
+            400,
+            'PO Quantity must be greater than zero.'
+        );
+    }
+
+    // =========================================================
+// RULE 10: UNIT PRICE MUST BE GREATER THAN 0
+// =========================================================
+
+if (
+    unitPrice === null ||
+    unitPrice === undefined ||
+    unitPrice <= 0
+) {
+    return req.error(
+        400,
+        'Unit Price must be greater than zero.'
+    );
+}
+
+
+
+    // =========================================================
+    // RULE 4: DUPLICATE PR ITEM PREVENTION
+    // =========================================================
+
+    if (!prItemNumber) {
+        return req.error(
+            400,
+            'PR Item Number is mandatory.'
+        );
+    }
+
+
+    if (!parent_ID) {
+        return req.error(
+            400,
+            'Purchase Order reference is missing.'
+        );
+    }
+
+
+    const po = await SELECT.one
+        .from(PurchaseOrders)
+        .where({
+            ID: parent_ID
+        });
+
+
+    if (!po) {
+        return req.error(
+            404,
+            'Parent Purchase Order not found.'
+        );
+    }
+
+
+    const existingItems = await SELECT
+        .from(PurchaseOrderItems)
+        .where({
+            prItemNumber: prItemNumber
+        });
+
+
+    for (const item of existingItems) {
+
+        const existingPO = await SELECT.one
             .from(PurchaseOrders)
-            .where({ ID });
-
-
-        if (!po) {
-            return req.error(404, 'Purchase Order not found');
-        }
-
-
-        if (po.status !== 'Draft') {
-            return req.error(
-                400,
-                `PO can be submitted only from Draft status. Current status: ${po.status}`
-            );
-        }
-
-
-        await UPDATE(PurchaseOrders)
-            .set({
-                status: 'Submitted'
-            })
-            .where({ ID });
-
-
-        return 'Purchase Order submitted successfully';
-
-    });
-
-
-    this.on('approve', PurchaseOrders, async (req) => {
-
-        const ID = req.params[0].ID;
-
-        const po = await SELECT.one
-            .from(PurchaseOrders)
-            .where({ ID });
-
-
-        if (!po) {
-            return req.error(404, 'Purchase Order not found');
-        }
-
-
-        if (po.status !== 'Submitted') {
-            return req.error(
-                400,
-                `PO can be approved only from Submitted status. Current status: ${po.status}`
-            );
-        }
-
-
-        await UPDATE(PurchaseOrders)
-            .set({
-                status: 'Approved'
-            })
-            .where({ ID });
-
-
-        return 'Purchase Order approved successfully';
-
-    });
-
-
-    this.on('reject', PurchaseOrders, async (req) => {
-
-        const ID = req.params[0].ID;
-
-        const po = await SELECT.one
-            .from(PurchaseOrders)
-            .where({ ID });
-
-
-        if (!po) {
-            return req.error(404, 'Purchase Order not found');
-        }
-
-
-        if (po.status !== 'Submitted') {
-            return req.error(
-                400,
-                `PO can be rejected only from Submitted status. Current status: ${po.status}`
-            );
-        }
-
-
-        await UPDATE(PurchaseOrders)
-            .set({
-                status: 'Rejected'
-            })
-            .where({ ID });
-
-
-        return 'Purchase Order rejected';
-
-    });
-
-
-    this.on('cancel', PurchaseOrders, async (req) => {
-
-        const ID = req.params[0].ID;
-
-        const po = await SELECT.one
-            .from(PurchaseOrders)
-            .where({ ID });
-
-
-        if (!po) {
-            return req.error(404, 'Purchase Order not found');
-        }
+            .where({
+                ID: item.parent_ID
+            });
 
 
         if (
-            po.status !== 'Draft' &&
-            po.status !== 'Submitted'
+            existingPO &&
+            existingPO.prNumber === po.prNumber
         ) {
 
             return req.error(
                 400,
-                `PO cannot be cancelled from ${po.status} status`
+                `PR Item ${prItemNumber} from PR ${po.prNumber} has already been used in another Purchase Order.`
             );
 
         }
+    }
+
+});
 
 
-        await UPDATE(PurchaseOrders)
-            .set({
-                status: 'Cancelled'
-            })
-            .where({ ID });
+    // =========================================================
+    // YOUR EXISTING SUBMIT ACTION
+    // =========================================================
+
+    this.on('submit', PurchaseOrders, async (req) => {
+
+        // your existing submit code...
+
+    });
 
 
-        return 'Purchase Order cancelled successfully';
+    // =========================================================
+    // YOUR EXISTING APPROVE ACTION
+    // =========================================================
+
+    this.on('approve', PurchaseOrders, async (req) => {
+
+        // your existing approve code...
+
+    });
+
+
+    // =========================================================
+    // YOUR EXISTING REJECT ACTION
+    // =========================================================
+
+    this.on('reject', PurchaseOrders, async (req) => {
+
+        // your existing reject code...
+
+    });
+
+
+    // =========================================================
+    // YOUR EXISTING CANCEL ACTION
+    // =========================================================
+
+    this.on('cancel', PurchaseOrders, async (req) => {
+
+        // your existing cancel code...
 
     });
 
